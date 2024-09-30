@@ -16,9 +16,11 @@ const express_1 = __importDefault(require("express"));
 const router = express_1.default.Router();
 const prisma_1 = __importDefault(require("../../../shared/prisma"));
 router.post('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a;
     const { sessionId, serviceCode, phoneNumber, text } = req.body;
     let response = '';
+    // Log the incoming request body for debugging
+    console.log("Request Body:", req.body);
+    // Initial welcome message
     if (text === '') {
         response = `CON Welcome to World-M
         1. Check Your Balance
@@ -27,23 +29,40 @@ router.post('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
         4. Get mini-statement
         5. Deposit`;
     }
+    // Handle balance check
     else if (text === '1') {
-        const decodedUserInfo = yield prisma_1.default.user.findUnique({
-            where: {
-                phoneNumber
-            },
-            include: {
-                userFinancialInfo: true,
-            },
-        });
-        const balance = (_a = decodedUserInfo === null || decodedUserInfo === void 0 ? void 0 : decodedUserInfo.userFinancialInfo) === null || _a === void 0 ? void 0 : _a.accountBalance;
-        console.log(balance);
-        response = `CON Your account balance is:${balance} RWF
-       `;
+        try {
+            // Await the database query to ensure the response waits for the balance
+            const decodedUserInfo = yield prisma_1.default.user.findUnique({
+                where: {
+                    phoneNumber, // Using the phone number to fetch the user
+                },
+                include: {
+                    userFinancialInfo: true, // Including financial information
+                },
+            });
+            // Ensure user info was found
+            if (!decodedUserInfo || !decodedUserInfo.userFinancialInfo) {
+                // If user info or financial info is missing, inform the user
+                response = `END User or financial info not found.`;
+            }
+            else {
+                // Retrieve the account balance
+                const balance = decodedUserInfo.userFinancialInfo.accountBalance;
+                // Prepare the response with the balance
+                response = `CON Your account balance is: ${balance} RWF`;
+            }
+        }
+        catch (error) {
+            console.error("Error fetching user info:", error);
+            // If an error occurs, inform the user
+            response = `END An error occurred while fetching your balance.`;
+        }
     }
+    // Handle other menu options
     else if (text === '2') {
         response = `CON Choose where you want to transfer
-        1. Internal Tranfer
+        1. Internal Transfer
         2. Bank of Kigali
         3. MTN Mobile Money`;
     }
@@ -60,6 +79,9 @@ router.post('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
         const balance = 'KES 10,000';
         response = `END Your balance is ${balance}`;
     }
-    res.send(response);
+    // Send the final response if it has been set
+    if (response) {
+        res.send(response); // This will only send a response after all checks and balances have been processed
+    }
 }));
 exports.default = router;
