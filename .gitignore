@@ -4,4 +4,4 @@
 /logs
 .vercel
 
-/dist
+# /dist
