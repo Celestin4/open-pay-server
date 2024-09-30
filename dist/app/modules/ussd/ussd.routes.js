@@ -36,7 +36,9 @@ router.post('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
                 userFinancialInfo: true,
             },
         });
-        response = `CON Your account balance is:${(_a = decodedUserInfo === null || decodedUserInfo === void 0 ? void 0 : decodedUserInfo.userFinancialInfo) === null || _a === void 0 ? void 0 : _a.accountBalance} RWF
+        const balance = (_a = decodedUserInfo === null || decodedUserInfo === void 0 ? void 0 : decodedUserInfo.userFinancialInfo) === null || _a === void 0 ? void 0 : _a.accountBalance;
+        console.log(balance);
+        response = `CON Your account balance is:${balance} RWF
        `;
     }
     else if (text === '2') {

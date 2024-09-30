@@ -32,7 +32,10 @@ router.post('/', async (req: Request<{}, {}, UssdRequest>, res: Response) => {
           },
         });
 
-        response = `CON Your account balance is:${decodedUserInfo?.userFinancialInfo?.accountBalance} RWF
+        const balance = decodedUserInfo?.userFinancialInfo?.accountBalance 
+       console.log(balance)
+
+        response = `CON Your account balance is:${balance} RWF
        `;
 
   } else if (text === '2') {
