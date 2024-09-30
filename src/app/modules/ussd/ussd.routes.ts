@@ -45,6 +45,7 @@ router.post('/', async (req: Request<{}, {}, UssdRequest>, res: Response) => {
       } else {
         // Retrieve the account balance
         const balance = decodedUserInfo.userFinancialInfo.accountBalance;
+        console.log(phoneNumber)
 
         // Prepare the response with the balance
         response = `CON Your account balance is: ${balance} RWF`;
