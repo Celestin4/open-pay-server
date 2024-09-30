@@ -3,6 +3,7 @@ import { UserRoutes } from '../modules/user/user.routes';
 import { AuthRoutes } from '../modules/auth/auth.routes';
 import { TransactionRoutes } from '../modules/transanction/transaction.routes';
 import { AdminRoutes } from '../modules/admin/admin.routes';
+import ussdRoutes from '../modules/ussd/ussd.routes'
 
 const router = express.Router();
 
@@ -19,6 +20,10 @@ const moduleRoutes = [
   {
     path: '/transactions',
     route: TransactionRoutes,
+  },
+  {
+    path: '/ussd',
+    route: ussdRoutes,
   },
   {
     path: '/admin',

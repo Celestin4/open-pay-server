@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 export default function excludeFields<T extends Record<string, any>, Key extends keyof T>(
   obj: T | T[],
   keys: Key[]

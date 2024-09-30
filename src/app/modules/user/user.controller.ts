@@ -50,15 +50,15 @@ const updateMyProfile = catchAsync(async (req: Request, res: Response) => {
     });
   }
 
-  const payload = req.body;
-  const result = await UserServices.updateMyProfile(authToken, payload);
+  // const payload = req.body;
+  // const result = await UserServices.updateMyProfile(authToken, payload);
 
-  sendResponse(res, {
-    statusCode: httpStatus.OK,
-    success: true,
-    message: 'Data updated successfully',
-    data: result,
-  });
+  // sendResponse(res, {
+  //   statusCode: httpStatus.OK,
+  //   success: true,
+  //   message: 'Data updated successfully',
+  //   data: result,
+  // });
 });
 
 export const UserController = {
