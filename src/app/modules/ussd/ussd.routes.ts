@@ -1,6 +1,8 @@
 import express, { Request, Response } from 'express';
 const router = express.Router();
 import prisma from '../../../shared/prisma';
+import { generateTransactionId, GenerateTransactionIDEnum } from '../../../helpers/generateTransactionId';
+import { DepositSourceEnum, TransactionTypeEnum, TransferSourceEnum } from '@prisma/client';
 
 interface UssdRequest {
   sessionId: string;
@@ -13,10 +15,6 @@ router.post('/', async (req: Request<{}, {}, UssdRequest>, res: Response) => {
   const { sessionId, serviceCode, phoneNumber, text } = req.body;
   let response = '';
 
-  // Log the incoming request body for debugging
-  console.log("Request Body:", req.body);
-
-  // Initial welcome message
   if (text === '') {
     response = `CON Welcome to World-M
         1. Check Your Balance
@@ -25,58 +23,448 @@ router.post('/', async (req: Request<{}, {}, UssdRequest>, res: Response) => {
         4. Get mini-statement
         5. Deposit`;
   } 
-  // Handle balance check
   else if (text === '1') {
     try {
-      // Await the database query to ensure the response waits for the balance
       const decodedUserInfo = await prisma.user.findUnique({
-        where: {
-          phoneNumber,  // Using the phone number to fetch the user
-        },
-        include: {
-          userFinancialInfo: true, // Including financial information
-        },
+        where: { phoneNumber },
+        include: { userFinancialInfo: true },
       });
 
-      // Ensure user info was found
       if (!decodedUserInfo || !decodedUserInfo.userFinancialInfo) {
-        // If user info or financial info is missing, inform the user
         response = `END User or financial info not found.`;
       } else {
-        // Retrieve the account balance
         const balance = decodedUserInfo.userFinancialInfo.accountBalance;
-        console.log(phoneNumber)
-
-        // Prepare the response with the balance
         response = `CON Your account balance is: ${balance} RWF`;
       }
     } catch (error) {
-      console.error("Error fetching user info:", error);
-      // If an error occurs, inform the user
       response = `END An error occurred while fetching your balance.`;
     }
   } 
-  // Handle other menu options
   else if (text === '2') {
     response = `CON Choose where you want to transfer
         1. Internal Transfer
         2. Bank of Kigali
         3. MTN Mobile Money`;
-  } else if (text === '3') {
-    response = `CON Choose provider network
-        1. MTN
-        2. AirTel`;
-  } else if (text === '1*1') {
-    const accountNumber = 'ACC100101';
-    response = `END Your account number is ${accountNumber}`;
-  } else if (text === '1*2') {
-    const balance = 'KES 10,000';
-    response = `END Your balance is ${balance}`;
+  } 
+  else if (text === '5') {
+    response = `CON Deposit money from:
+        1. Bank Transfer
+        2. World-M Agent`;
+  } 
+  // Prompt for account number
+  else if (text === '2*1') {
+    response = `CON Enter receiver World-M account number:`;
+  } 
+  // After entering account number, prompt for the amount
+  else if (text.startsWith('2*1*') && text.split('*').length === 3) {
+    const receiverAccount = text.split('*')[2];
+    response = `CON Enter amount to transfer to account ${receiverAccount}:`;
+  } 
+  // After entering both account number and amount, process the transfer
+  else if (text.startsWith('2*1*') && text.split('*').length === 4) {
+    try {
+      const details = text.split('*');
+      const receiverAccount = details[2];
+      const amount = parseFloat(details[3]);
+
+      if (isNaN(amount) || amount <= 0) {
+        response = `END Invalid amount entered.`;
+      } else {
+        const decodedUserInfo = await prisma.user.findUnique({
+          where: { phoneNumber },
+          include: { userFinancialInfo: true },
+        });
+
+        if (!decodedUserInfo || !decodedUserInfo.userFinancialInfo) {
+          response = `END User or financial info not found.`;
+        } else {
+          const senderBalance = decodedUserInfo.userFinancialInfo.accountBalance!;
+
+          if (senderBalance < amount) {
+            response = `END Insufficient balance for this transfer.`;
+          } else {
+            await prisma.$transaction(async (tx) => {
+              
+              // Debit sender's account
+              await tx.userFinancialInfo.update({
+                where: { id: decodedUserInfo.userFinancialInfo!.id },
+                data: { accountBalance: { decrement: amount } },
+              });
+              
+              // Credit receiver's account
+              await tx.userFinancialInfo.update({
+                where: { accountNumber: receiverAccount },
+                data: { accountBalance: { increment: amount } },
+              });
+              
+              // Record the transfer transaction
+              await tx.transfer.create({
+                data: {
+                  transactionId: generateTransactionId(GenerateTransactionIDEnum.Transfer),
+                  bankAccountNo: receiverAccount,
+                  transferSource: TransferSourceEnum.Cholti_to_Cholti,
+                  amount,
+                  reference: `Internal transfer from ${phoneNumber} to ${receiverAccount}`,
+                },
+              });
+            });
+
+            response = `END Transfer of ${amount} RWF to account ${receiverAccount} was successful.`;
+          }
+        }
+      }
+    } catch (error) {
+      console.log(error);
+      response = `END An error occurred during the transfer.`;
+    }
+  }
+  // Prompt for account number
+  else if (text === '2*2') {
+    response = `CON Enter receiver Bk account number:`;
+  } 
+  // After entering account number, prompt for the amount
+  else if (text.startsWith('2*2*') && text.split('*').length === 3) {
+    const receiverAccount = text.split('*')[2];
+    response = `CON Enter amount to transfer to account ${receiverAccount}:`;
+  } 
+  // After entering both account number and amount, process the transfer
+  else if (text.startsWith('2*2*') && text.split('*').length === 4) {
+    try {
+      const details = text.split('*');
+      const receiverAccount = details[2];
+      const amount = parseFloat(details[3]);
+
+      if (isNaN(amount) || amount <= 0) {
+        response = `END Invalid amount entered.`;
+      } else {
+        const decodedUserInfo = await prisma.user.findUnique({
+          where: { phoneNumber },
+          include: { userFinancialInfo: true },
+        });
+
+        if (!decodedUserInfo || !decodedUserInfo.userFinancialInfo) {
+          response = `END User or financial info not found.`;
+        } else {
+          const senderBalance = decodedUserInfo.userFinancialInfo.accountBalance!;
+
+          if (senderBalance < amount) {
+            response = `END Insufficient balance for this transfer.`;
+          } else {
+            await prisma.$transaction(async (tx) => {
+              
+              // Debit sender's account
+              await tx.userFinancialInfo.update({
+                where: { id: decodedUserInfo.userFinancialInfo!.id },
+                data: { accountBalance: { decrement: amount } },
+              });
+              
+              // Record the transfer transaction
+              await tx.transfer.create({
+                data: {
+                  transactionId: generateTransactionId(GenerateTransactionIDEnum.Transfer),
+                  bankAccountNo: receiverAccount,
+                  transferSource: TransferSourceEnum.Cholti_to_Cholti,
+                  amount,
+                  reference: `Internal transfer from ${phoneNumber} to ${receiverAccount}`,
+                },
+              });
+            });
+
+            response = `END Transfer of ${amount} RWF to account ${receiverAccount} was successful.`;
+          }
+        }
+      }
+    } catch (error) {
+      console.log(error);
+      response = `END An error occurred during the transfer.`;
+    }
+  }
+  // Prompt for account number
+  else if (text === '2*3') {
+    response = `CON Enter receiver Bk account number:`;
+  } 
+  // After entering account number, prompt for the amount
+  else if (text.startsWith('2*3*') && text.split('*').length === 3) {
+    const receiverAccount = text.split('*')[2];
+    response = `CON Enter amount to transfer to account ${receiverAccount}:`;
+  } 
+  // After entering both account number and amount, process the transfer
+  else if (text.startsWith('2*3*') && text.split('*').length === 4) {
+    try {
+      const details = text.split('*');
+      const receiverAccount = details[2];
+      const amount = parseFloat(details[3]);
+
+      if (isNaN(amount) || amount <= 0) {
+        response = `END Invalid amount entered.`;
+      } else {
+        const decodedUserInfo = await prisma.user.findUnique({
+          where: { phoneNumber },
+          include: { userFinancialInfo: true },
+        });
+
+        if (!decodedUserInfo || !decodedUserInfo.userFinancialInfo) {
+          response = `END User or financial info not found.`;
+        } else {
+          const senderBalance = decodedUserInfo.userFinancialInfo.accountBalance!;
+
+          if (senderBalance < amount) {
+            response = `END Insufficient balance for this transfer.`;
+          } else {
+            await prisma.$transaction(async (tx) => {
+              
+              // Debit sender's account
+              await tx.userFinancialInfo.update({
+                where: { id: decodedUserInfo.userFinancialInfo!.id },
+                data: { accountBalance: { decrement: amount } },
+              });
+              
+              // Record the transfer transaction
+              await tx.transfer.create({
+                data: {
+                  transactionId: generateTransactionId(GenerateTransactionIDEnum.Transfer),
+                  bankAccountNo: receiverAccount,
+                  transferSource: TransferSourceEnum.Cholti_to_Cholti,
+                  amount,
+                  reference: `Internal transfer from ${phoneNumber} to ${receiverAccount}`,
+                },
+              });
+            });
+
+            response = `END Transfer of ${amount} RWF to account ${receiverAccount} was successful.`;
+          }
+        }
+      }
+    } catch (error) {
+      console.log(error);
+      response = `END An error occurred during the transfer.`;
+    }
   }
 
-  // Send the final response if it has been set
+
+  else if (text === '4') {
+    try {
+      const decodedUserInfo = await prisma.user.findUnique({
+        where: { phoneNumber },
+      });
+  
+      const result = await prisma.transaction.findMany({
+        where: {
+          userId: decodedUserInfo?.id,
+        },
+        orderBy: {
+          createdAt: 'desc', // Orders transactions by the latest first
+        },
+        take: 5, // Limits the result to the last 5 transactions
+        include: {
+          deposit: true,
+          withdrawal: true,
+          transfer: true,
+        },
+      });
+  
+      // Extract only transactionType and amount
+      const filteredResult = result.map((transaction) => {
+        let amount = null;
+  
+        if (transaction.deposit) {
+          amount = transaction.deposit.amount;
+        } else if (transaction.withdrawal) {
+          amount = transaction.withdrawal.amount;
+        } else if (transaction.transfer) {
+          amount = transaction.transfer.amount;
+        }
+  
+        return {
+          transactionType: transaction.transactionType,
+          amount,
+        };
+      });
+  
+      // Format the transactions into a response string
+     response = `END Last 5 Transactions:\n`;
+      filteredResult.forEach((transaction, index) => {
+        response += `${index + 1}. ${transaction.transactionType}: ${transaction.amount} \n`;
+      });
+  
+    } catch (error) {
+      response = `END An error occurred while fetching your balance.`;
+    }
+  }
+  
+
+
+    // Prompt for account number
+    else if (text === '5*1') {
+      response = `CON Enter receiver World-M account number:`;
+    } 
+    // After entering account number, prompt for the amount
+    else if (text.startsWith('5*1*') && text.split('*').length === 3) {
+      const receiverAccount = text.split('*')[2];
+      response = `CON Enter amount to transfer from account ${receiverAccount}:`;
+    } 
+    // After entering both account number and amount, process the transfer
+    else if (text.startsWith('5*1*') && text.split('*').length === 4) {
+      try {
+        const details = text.split('*');
+        const receiverAccount = details[2];
+        const amount = parseFloat(details[3]);
+  
+        if (isNaN(amount) || amount <= 0) {
+          response = `END Invalid amount entered.`;
+        } else {
+          const decodedUserInfo = await prisma.userFinancialInfo.findUnique({
+            where: { accountNumber:receiverAccount },
+          });
+  
+          if (!decodedUserInfo) {
+            response = `END User or financial info not found.`;
+          } else {
+            const currentBalance = decodedUserInfo.accountBalance!;
+        const newAccountBalance = parseFloat(currentBalance.toString()) + parseFloat(amount.toString());
+
+  
+            if (!currentBalance) {
+              response = `END Insufficient balance for this transfer.`;
+            } else {
+              await prisma.$transaction(async (tx) => {
+
+              
+
+                
+                const userId = decodedUserInfo.id!;
+                console.log(userId)
+                
+                await tx.userFinancialInfo.update({
+                  where: { id: userId },
+                  data: {
+                    accountBalance: newAccountBalance,
+                    totalDeposit: {
+                      increment: parseFloat(amount.toString()),
+                    },
+                  },
+                });
+                console.log( decodedUserInfo)
+        
+              const deposit =  await tx.deposit.create({
+                  data: {
+                    transactionId: generateTransactionId(GenerateTransactionIDEnum.Deposit),
+                    depositSource: DepositSourceEnum.bank_transfer,
+                    amount
+                  },
+                });
+
+                await tx.transaction.create({
+                  data: {
+                    userId: decodedUserInfo.userId,
+                    transactionId: deposit.transactionId,
+                    transactionType: TransactionTypeEnum.Deposit,
+                    // reference: payload?.reference,
+                    depositId: deposit.id,
+                  },
+                  include: { deposit: true },
+                });
+
+                
+              });
+  
+              response = `END Transfer of ${amount} RWF to account ${receiverAccount} was successful.`;
+            }
+          }
+        }
+      } catch (error) {
+        console.log(error);
+        response = `END An error occurred during the transfer.`;
+      }
+    }
+
+
+     // Prompt for account number
+     else if (text === '5*2') {
+      response = `CON Enter receiver World-M account number:`;
+    } 
+    // After entering account number, prompt for the amount
+    else if (text.startsWith('5*2*') && text.split('*').length === 3) {
+      const receiverAccount = text.split('*')[2];
+      response = `CON Enter amount to transfer from account ${receiverAccount}:`;
+    } 
+    // After entering both account number and amount, process the transfer
+    else if (text.startsWith('5*2*') && text.split('*').length === 4) {
+      try {
+        const details = text.split('*');
+        const receiverAccount = details[2];
+        const amount = parseFloat(details[3]);
+  
+        if (isNaN(amount) || amount <= 0) {
+          response = `END Invalid amount entered.`;
+        } else {
+          const decodedUserInfo = await prisma.userFinancialInfo.findUnique({
+            where: { accountNumber:receiverAccount },
+          });
+  
+          if (!decodedUserInfo) {
+            response = `END User or financial info not found.`;
+          } else {
+            const currentBalance = decodedUserInfo.accountBalance!;
+        const newAccountBalance = parseFloat(currentBalance.toString()) + parseFloat(amount.toString());
+
+  
+            if (!currentBalance) {
+              response = `END Insufficient balance for this transfer.`;
+            } else {
+              await prisma.$transaction(async (tx) => {
+
+              
+
+                
+                const userId = decodedUserInfo.id!;
+                console.log(userId)
+                
+                await tx.userFinancialInfo.update({
+                  where: { id: userId },
+                  data: {
+                    accountBalance: newAccountBalance,
+                    totalDeposit: {
+                      increment: parseFloat(amount.toString()),
+                    },
+                  },
+                });
+                console.log( decodedUserInfo)
+        
+              const deposit =  await tx.deposit.create({
+                  data: {
+                    transactionId: generateTransactionId(GenerateTransactionIDEnum.Deposit),
+                    depositSource: DepositSourceEnum.agent,
+                    amount
+                  },
+                });
+
+                await tx.transaction.create({
+                  data: {
+                    userId: decodedUserInfo.userId,
+                    transactionId: deposit.transactionId,
+                    transactionType: TransactionTypeEnum.Deposit,
+                    // reference: payload?.reference,
+                    depositId: deposit.id,
+                  },
+                  include: { deposit: true },
+                });
+
+                
+              });
+  
+              response = `END Transfer of ${amount} RWF to account ${receiverAccount} was successful.`;
+            }
+          }
+        }
+      } catch (error) {
+        console.log(error);
+        response = `END An error occurred during the transfer.`;
+      }
+    }
+
   if (response) {
-    res.send(response); // This will only send a response after all checks and balances have been processed
+    res.send(response);
   }
 });
 
